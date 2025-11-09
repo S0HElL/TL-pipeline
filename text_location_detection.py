@@ -16,4 +16,4 @@ def test_ocr_pipeline(image_path):
 
 # Example usage
 if __name__ == "__main__":
-    test_ocr_pipeline('path/to/your/image.png')  # Update with the actual image path
+    test_ocr_pipeline('./data/sample_image.png')
