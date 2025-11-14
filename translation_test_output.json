@@ -1,0 +1,26 @@
+[
+    {
+        "japanese": "こんにちは、世界！",
+        "english": "Hello World!"
+    },
+    {
+        "japanese": "これは漫画の翻訳プロジェクトです。",
+        "english": "This is a manga translation project."
+    },
+    {
+        "japanese": "私はソフトウェアエンジニアです。",
+        "english": "I'm a software engineer."
+    },
+    {
+        "japanese": "お腹が空いた。",
+        "english": "I'm hungry."
+    },
+    {
+        "japanese": "ごめん。",
+        "english": "sorry."
+    },
+    {
+        "japanese": "(empty string)",
+        "english": "(empty string)"
+    }
+]

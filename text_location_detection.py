@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw
 # The 'gpu=False' is a safe default for systems without a dedicated GPU or for smaller tasks.
 # If a GPU is available and performance is critical, this should be set to True.
 try:
-    reader = easyocr.Reader(['ja', 'en'], gpu=False)
+    reader = easyocr.Reader(['ja', 'en'], gpu=True)
 except Exception as e:
     print(f"Error initializing EasyOCR: {e}")
     reader = None

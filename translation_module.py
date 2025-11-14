@@ -1,44 +1,72 @@
-import torch
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
-from typing import Any
+from googletrans import Translator
+from typing import Any, List
+import os
+import csv
+from collections import defaultdict
 
-# Model name for NLLB 600M distilled model
-MODEL_NAME = "facebook/nllb-200-distilled-600M"
-SOURCE_LANG = "jpn_Jpan" # Japanese
-TARGET_LANG = "eng_Latn" # English
+# Kanji dictionary globals
+KANJI_DICT_PATH = "joyo.csv"
+kanji_dictionary: Any = None
 
-# Global variables to hold the tokenizer and model
-tokenizer: Any = None
-model: Any = None
+# Translator globals
+SOURCE_LANG = "ja" # Japanese
+TARGET_LANG = "en" # English
 
-def initialize_translation_model():
+# Global variable to hold the translator
+translator: Translator = None
+
+def load_kanji_dictionary():
     """
-    Initializes the NLLB model and tokenizer for Japanese to English translation.
-    Uses GPU if available, otherwise falls back to CPU.
+    Loads the kanji dictionary from joyo.csv into a global dictionary.
+    Kanji is at column 2 (index 1), meanings are at column 8 (index 7).
     """
-    global tokenizer, model
-    if tokenizer is not None and model is not None:
+    global kanji_dictionary
+    if kanji_dictionary is not None:
         return
 
-    print(f"Initializing translation model: {MODEL_NAME}...")
+    print(f"Loading kanji dictionary from {KANJI_DICT_PATH}...")
+    kanji_dictionary = {}
     try:
-        # Check for GPU
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
-        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, src_lang=SOURCE_LANG)
-        model = AutoModelForSeq2SeqLM.from_pretrained(MODEL_NAME).to(device)
-        
-        print(f"Translation model initialized successfully on {device}.")
+        with open(KANJI_DICT_PATH, 'r', encoding='utf-8') as f:
+            # Use csv.reader to handle CSV format correctly
+            reader = csv.reader(f)
+            # Skip header
+            next(reader)
+            for row in reader:
+                if len(row) > 7:
+                    kanji = row[1].strip()
+                    # Meanings are pipe-separated in the 8th column (index 7)
+                    meanings = [m.strip() for m in row[7].split('|') if m.strip()]
+                    if kanji and meanings:
+                        # Store as a list of meanings
+                        kanji_dictionary[kanji] = meanings
+        print(f"Kanji dictionary loaded successfully with {len(kanji_dictionary)} entries.")
     except Exception as e:
-        print(f"Error initializing translation model: {e}")
-        # Set to None on failure to allow re-initialization attempt
-        tokenizer = None
-        model = None
+        print(f"Error loading kanji dictionary: {e}")
+        kanji_dictionary = None
+        raise
+
+def initialize_translator():
+    """
+    Initializes the googletrans Translator object and loads the kanji dictionary.
+    """
+    global translator
+    if translator is not None:
+        return
+
+    print("Initializing googletrans Translator...")
+    try:
+        translator = Translator()
+        load_kanji_dictionary()
+        print("Translator initialized successfully.")
+    except Exception as e:
+        print(f"Error initializing translator: {e}")
+        translator = None
         raise
 
 def translate_japanese_to_english(japanese_text: str) -> str:
     """
-    Translates a single string of Japanese text to English using the NLLB model.
+    Translates a single string of Japanese text to English using the googletrans library.
 
     Args:
         japanese_text: The Japanese text to translate.
@@ -46,36 +74,44 @@ def translate_japanese_to_english(japanese_text: str) -> str:
     Returns:
         The translated English text.
     """
-    global tokenizer, model
-    if tokenizer is None or model is None:
+    global translator
+    if translator is None:
         try:
-            initialize_translation_model()
+            initialize_translator()
         except Exception:
-            return "[Translation Error: Model initialization failed]"
+            return "[Translation Error: Translator initialization failed]"
 
     # Explicit check after initialization attempt
-    if tokenizer is None or model is None:
-        return "[Translation Error: Model not initialized]"
+    if translator is None:
+        return "[Translation Error: Translator not initialized]"
 
     if not japanese_text.strip():
         return ""
 
     try:
-        # Tokenize the input text
-        inputs = tokenizer(japanese_text, return_tensors="pt", padding=True, truncation=True)
-        
-        # Move inputs to the model's device (GPU or CPU)
-        device = model.device
-        inputs = {k: v.to(device) for k, v in inputs.items()}
-
-        # Generate the translation, specifying the target language
-        translated_ids = model.generate(
-            **inputs, 
-            forced_bos_token_id=tokenizer.lang_code_to_id[TARGET_LANG]
+        # Use googletrans to translate
+        translation = translator.translate(
+            japanese_text,
+            src=SOURCE_LANG,
+            dest=TARGET_LANG
         )
-
-        # Decode the translated IDs back to text
-        english_text = tokenizer.decode(translated_ids.squeeze(), skip_special_tokens=True)
+        english_text = translation.text
+        
+        # Fallback logic: If the translation is empty, try to use the kanji dictionary
+        if not english_text.strip() and kanji_dictionary:
+            fallback_translation = []
+            for char in japanese_text:
+                if char in kanji_dictionary:
+                    # Use the first meaning as a fallback
+                    fallback_translation.append(f"[{kanji_dictionary[char][0]}]")
+                else:
+                    # Keep non-kanji characters (hiragana, katakana, punctuation, etc.)
+                    fallback_translation.append(char)
+            
+            # If the fallback is not just empty spaces, use it.
+            if "".join(fallback_translation).strip() != japanese_text.strip():
+                print(f"Warning: Translator returned empty translation for '{japanese_text}'. Using kanji dictionary fallback.")
+                english_text = "".join(fallback_translation)
         
         return english_text
     except Exception as e:
@@ -89,21 +125,29 @@ if __name__ == '__main__':
         "これは漫画の翻訳プロジェクトです。", # This is a manga translation project.
         "私はソフトウェアエンジニアです。", # I am a software engineer.
         "お腹が空いた。", # I'm hungry.
+        "ごめん。", # Test for the problematic word "gomen"
         "" # Empty string test
     ]
 
     try:
-        initialize_translation_model()
+        initialize_translator()
     except Exception:
-        print("Skipping translation test due to model initialization failure.")
+        print("Skipping translation test due to translator initialization failure.")
         exit()
     
-    print("\n--- Translation Test ---")
+    import json
+    output_data = []
+    
     for text in sample_japanese:
         if text:
             english_text = translate_japanese_to_english(text)
-            print(f"Japanese: {text}")
-            print(f"English:  {english_text}\n")
+            output_data.append({"japanese": text, "english": english_text})
         else:
-            print("Japanese: (empty string)")
-            print("English:  (empty string)\n")
+            output_data.append({"japanese": "(empty string)", "english": "(empty string)"})
+
+    # Write results to a file to avoid console encoding issues
+    output_file = "translation_test_output.json"
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(output_data, f, ensure_ascii=False, indent=4)
+        
+    print(f"Translation test results written to {output_file}")

@@ -1,0 +1,17 @@
+--- Testing translation on image: data\sample_manga_2.jpg ---
+Image loaded successfully.
+
+--- Test Japanese Phrases ---
+私に
+ごめん
+って言え
+私に
+ごめん
+この
+クソガキが
+私にごめんって言え 私にごめん このクソガキが
+-----------------------------
+
+--- Translated English Text ---
+Watashi Sorry, I'm sorry for you. Teite Ie Watashi Sorry, I'm sorry for you. Kono Kono Kusogaki ga I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry, I'm sorry.
+-----------------------------
