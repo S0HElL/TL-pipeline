@@ -5,10 +5,7 @@ import textwrap
 import re
 
 # Define a default font path. This should be a common, readable font.
-# If a specific font file is available, it should be used.
-# For now, we'll use a common system font name or a placeholder.
-# A good choice for manga is a clean, sans-serif font.
-# NOTE: The user may need to provide a font file (e.g., 'data/manga_font.ttf')
+
 DEFAULT_FONT_PATH = "fonts/Wild Words Roman.ttf"
 
 def get_font(size: int) -> ImageFont.FreeTypeFont:
@@ -23,6 +20,31 @@ def get_font(size: int) -> ImageFont.FreeTypeFont:
             print(f"Warning: Could not load fonts. Falling back to default PIL font.")
             return ImageFont.load_default()
 
+def break_long_word(word: str, max_width: int, draw: ImageDraw.ImageDraw, font: ImageFont.FreeTypeFont) -> str:
+    """
+    Breaks a long word into two parts with a hyphen if it exceeds max_width.
+    Returns the word with a hyphen and newline inserted (e.g., "swim-\nsuit").
+    """
+    # Check if word fits
+    bbox = draw.textbbox((0, 0), word, font=font)
+    word_width = bbox[2] - bbox[0]
+    
+    if word_width <= max_width:
+        return word
+    
+    # Find the best breaking point
+    for i in range(len(word) - 1, 0, -1):
+        test_fragment = word[:i] + '-'
+        bbox = draw.textbbox((0, 0), test_fragment, font=font)
+        fragment_width = bbox[2] - bbox[0]
+        
+        if fragment_width <= max_width:
+            # Break here: first part with hyphen + newline + rest
+            return word[:i] + '-\n' + word[i:]
+    
+    # Fallback: if even single char + hyphen is too wide, just return original
+    return word
+
 def calculate_font_size(draw: ImageDraw.ImageDraw, text: str, box_width: int, box_height: int, max_size: int = 50, min_size: int = 10) -> Tuple[int, str]:
     """
     Task 5.1.3 & 5.2.1: Calculates the largest font size that allows the wrapped text to fit 
@@ -35,40 +57,58 @@ def calculate_font_size(draw: ImageDraw.ImageDraw, text: str, box_width: int, bo
     for size in range(min_size, max_size + 1):
         font = get_font(size)
         
-        # 1. Wrap the text based on the current font size and box width
-        # We need to estimate the max characters per line for the wrapper
-        
-        # For now, we'll use a simple character-based heuristic for max_chars_per_line
+        # Measure character width
         try:
-            # Measure the width of a single character (e.g., 'W')
             char_width = draw.textbbox((0, 0), 'W', font=font)[2]
         except Exception:
-            # Fallback for older PIL versions or default font
             char_width = font.getsize('W')[0]
             
         if char_width == 0:
-            # If font size is too small to measure, break
             break 
-            
-        # Heuristic multiplier for better wrapping. Reduced from 1.5 to 1.2 to encourage
-        # more line breaks for tall speech bubbles, as requested by the user.
-        max_chars_per_line = max(1, int(box_width / char_width * 1.0))
-        # Allow breaking long words (like 'SWIMSUIT') to prevent text from going out of bounds.
-        # This is a common practice in manga typesetting (Task 5.3.4).
-        wrapper = textwrap.TextWrapper(width=max_chars_per_line, break_long_words=False)
-        wrapped_text = '\n'.join(wrapper.wrap(text=text))
         
-        # 2. Measure the wrapped text's total height
-        # Use textbbox for accurate size calculation
+        # Check each ORIGINAL word to see if any are too wide for the box
+        original_words = text.split()
+        words_to_break = set()
+        
+        for word in original_words:
+            bbox = draw.textbbox((0, 0), word, font=font)
+            word_width = bbox[2] - bbox[0]
+            
+            # If a single word is wider than 97.5% of box, mark it for breaking
+            if word_width > box_width * 0.975:
+                words_to_break.add(word)
+        
+        # If we have words that need breaking, process them
+        if words_to_break:
+            processed_text = text
+            for word in words_to_break:
+                broken_word = break_long_word(word, box_width, draw, font)
+                processed_text = processed_text.replace(word, broken_word)
+        else:
+            processed_text = text
+        
+        # Now wrap the text normally
+        max_chars_per_line = max(1, int(box_width / char_width * 1.6))
+        wrapper = textwrap.TextWrapper(
+            width=max_chars_per_line, 
+            break_long_words=False,
+            break_on_hyphens=False
+        )
+        
+        try:
+            wrapped_text = '\n'.join(wrapper.wrap(text=processed_text))
+        except:
+            continue
+        
+        # Measure total height with padding
         bbox = draw.textbbox((0, 0), wrapped_text, font=font)
         text_height = bbox[3] - bbox[1]
         
-        # Use a 10% buffer for line spacing (leading) to prevent lines from being too close.
-        if text_height * 1.1 <= box_height:
+        # Use 1.3x buffer for breathing room
+        if text_height * 1.3 <= box_height:
             best_size = size
             best_wrapped_text = wrapped_text
         else:
-            # Stop when the text no longer fits
             break
             
     return best_size, best_wrapped_text

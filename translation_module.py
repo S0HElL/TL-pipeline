@@ -9,7 +9,7 @@ KANJI_DICT_PATH = "joyo.csv"
 kanji_dictionary: Any = None
 
 # Translator globals
-SOURCE_LANG = "ja" # Japanese
+SOURCE_LANG = "auto" # Auto-detect source language
 TARGET_LANG = "en" # English
 
 # Global variable to hold the translator
@@ -66,10 +66,12 @@ def initialize_translator():
 
 def translate_japanese_to_english(japanese_text: str) -> str:
     """
-    Translates a single string of Japanese text to English using the googletrans library.
+    Translates a single string of text to English using the googletrans library.
+    The source language is automatically detected by googletrans.
+    A Japanese-specific kanji dictionary fallback is used if the primary translation is empty.
 
     Args:
-        japanese_text: The Japanese text to translate.
+        japanese_text: The text to translate (originally intended for Japanese, but now auto-detects).
 
     Returns:
         The translated English text.
