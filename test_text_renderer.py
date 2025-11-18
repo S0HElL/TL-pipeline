@@ -31,6 +31,9 @@ def run_text_render_test():
     box_3 = (50, 300, 250, 500) # A tall, narrow box
     text_3 = "This is a very very very very very very very very very very very very long text."
 
+    # Test case 4: Long word to test intelligent breaking
+    box_4 = (450, 50, 750, 250) # A wide, short box
+    text_4 = "The word is goodness and it should break correctly."
     # 3. Render text for all test cases
     print("Rendering Test Case 1 (Long text, wide box)...")
     img = render_text(img, text_1, box_1)
@@ -40,6 +43,9 @@ def run_text_render_test():
     
     print("Rendering Test Case 3 (Very long text, narrow box)...")
     img = render_text(img, text_3, box_3)
+    
+    print("Rendering Test Case 4 (Intelligent word breaking)...")
+    img = render_text(img, text_4, box_4)
 
     # 4. Save the result
     os.makedirs(DATA_DIR, exist_ok=True)

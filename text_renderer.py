@@ -3,6 +3,11 @@ from PIL import Image, ImageDraw, ImageFont
 from typing import List, Tuple
 import textwrap
 import re
+import pyphen
+
+# Initialize the English hyphenation dictionary
+# This is done once to avoid overhead
+HYPHENATOR = pyphen.Pyphen(lang='en_US')
 
 # Define a default font path. This should be a common, readable font.
 
@@ -22,8 +27,10 @@ def get_font(size: int) -> ImageFont.FreeTypeFont:
 
 def break_long_word(word: str, max_width: int, draw: ImageDraw.ImageDraw, font: ImageFont.FreeTypeFont) -> str:
     """
-    Breaks a long word into two parts with a hyphen if it exceeds max_width.
-    Returns the word with a hyphen and newline inserted (e.g., "swim-\nsuit").
+    Breaks a long word into two parts with a hyphen at a valid hyphenation point
+    if it exceeds max_width. Returns the word with a hyphen and newline inserted.
+    
+    If no valid hyphenation point fits, it falls back to the original greedy break.
     """
     # Check if word fits
     bbox = draw.textbbox((0, 0), word, font=font)
@@ -32,17 +39,27 @@ def break_long_word(word: str, max_width: int, draw: ImageDraw.ImageDraw, font: 
     if word_width <= max_width:
         return word
     
-    # Find the best breaking point
-    for i in range(len(word) - 1, 0, -1):
+    # 1. Get valid hyphenation points (indices where a hyphen can be inserted)
+    # e.g., for 'goodness', positions might be [4] for 'good-ness'
+    hyphen_positions = HYPHENATOR.positions(word)
+    
+    # 2. Find the best breaking point from the valid positions
+    # Iterate from the longest possible prefix to the shortest
+    for i in reversed(hyphen_positions):
+        # i is the index *after* which the hyphen is inserted
+        # word[:i] is the first part, word[i:] is the second part
         test_fragment = word[:i] + '-'
+        
         bbox = draw.textbbox((0, 0), test_fragment, font=font)
         fragment_width = bbox[2] - bbox[0]
         
         if fragment_width <= max_width:
-            # Break here: first part with hyphen + newline + rest
+            # This is the longest valid hyphenation break that fits.
             return word[:i] + '-\n' + word[i:]
-    
-    # Fallback: if even single char + hyphen is too wide, just return original
+            
+    # 3. Fallback: If no valid hyphenation point fits (i.e., the first valid hyphenation
+    # part is still too wide), we must return the original word. The calling function
+    # (calculate_font_size) will then try a smaller font size.
     return word
 
 def calculate_font_size(draw: ImageDraw.ImageDraw, text: str, box_width: int, box_height: int, max_size: int = 50, min_size: int = 10) -> Tuple[int, str]:
@@ -74,7 +91,7 @@ def calculate_font_size(draw: ImageDraw.ImageDraw, text: str, box_width: int, bo
             bbox = draw.textbbox((0, 0), word, font=font)
             word_width = bbox[2] - bbox[0]
             
-            # If a single word is wider than 97.5% of box, mark it for breaking
+            # If a single word is wider than 975% of box, mark it for breaking
             if word_width > box_width * 0.975:
                 words_to_break.add(word)
         
