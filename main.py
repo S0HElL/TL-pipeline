@@ -87,139 +87,181 @@ def get_group_bounding_box(group: List[Tuple[int, int, int, int]]) -> Tuple[int,
     y_max = max(box[3] for box in group)
     return (x_min, y_min, x_max, y_max)
 
-def process_manga_page(input_image_path: str, output_image_path: str):
+def run_translation_pipeline(input_image_path: str) -> Tuple[Image.Image | None, List[dict] | None]:
     """
-    The main pipeline function to translate a single manga page.
-    
+    Runs the core translation pipeline, designed to be called by a GUI worker.
+    It returns the inpainted image and structured translation data.
+
     Steps:
     1. Load image
     2. Detect text regions (bounding boxes)
-    3. Extract Japanese text (OCR)
-    4. Translate Japanese text to English
-    5. Remove Japanese text (Inpainting)
-    6. Render English text
-    7. Save the final image
+    3. Extract Japanese text (OCR) & Translate
+    4. Remove Japanese text (Inpainting)
+
+    Args:
+        input_image_path: Path to the input manga image file.
+
+    Returns:
+        Tuple: (inpainted_image, translated_data_list)
+        translated_data_list: A list of dicts, where each dict contains:
+            {
+                'group_box': (x_min, y_min, x_max, y_max),
+                'japanese_text': str,
+                'english_text': str,
+                'original_boxes': List[Tuple[int, int, int, int]],
+            }
     """
-    logging.info(f"--- Starting pipeline for {input_image_path} ---")
-    
+    logging.info(f"--- Starting core pipeline for {input_image_path} ---")
+
     # 1. Load image
     original_image = load_image(input_image_path)
     if original_image is None:
         logging.error("Pipeline aborted: Image loading failed.")
-        return
+        return None, None
 
     # 2. Detect text regions (bounding boxes)
     try:
         # detect_text_regions returns (bounding_boxes, pil_img)
-        # We pass the path and get the boxes. The image returned is the same as original_image
-        # but we use the one from load_image for consistency.
+        # We pass the path and get the boxes.
         bounding_boxes, _ = detect_text_regions(input_image_path)
         if not bounding_boxes:
-            logging.warning("No text regions detected. Saving original image.")
-            original_image.save(output_image_path)
-            logging.info(f"Pipeline finished. Saved original image to {output_image_path}")
-            return
+            logging.warning("No text regions detected.")
+            # Return original image if no boxes found, but we still need to inpaint for clean slate
+            # No, if no boxes, we skip inpainting and translation.
+            return original_image, []
         logging.info(f"Detected {len(bounding_boxes)} text regions.")
     except Exception as e:
         logging.error(f"Pipeline aborted: Text detection failed: {e}")
-        return
+        return None, None
 
-    # 3 & 4. Extract Japanese text (OCR) and Translate per bounding box
-    translated_texts: List[Tuple[Tuple[int, int, int, int], str]] = []
-    
+    # 3. Extract Japanese text (OCR) and Translate per bounding box
+    translated_data_list: List[dict] = []
+
     # Group the bounding boxes that are close together (likely a single speech bubble)
     grouped_boxes = group_bounding_boxes(bounding_boxes)
     logging.info(f"Grouped {len(bounding_boxes)} boxes into {len(grouped_boxes)} translation units.")
-    
+
     for i, group in enumerate(grouped_boxes):
-        # Calculate the single bounding box for the entire group (for inpainting and rendering)
+        # Calculate the single bounding box for the entire group
         group_box = get_group_bounding_box(group)
-        
+
         # Collect text from all individual boxes within the group
         combined_japanese_text = []
-        
+        successful_original_boxes = []
+
         for j, box in enumerate(group):
             x_min, y_min, x_max, y_max = box
-            
+
             try:
                 # Crop the image to the individual bounding box region
                 cropped_image = original_image.crop((x_min, y_min, x_max, y_max))
-                
+
                 # Extract Japanese text from the cropped region
                 japanese_text_raw = extract_text_from_image(cropped_image)
-                
+
                 if japanese_text_raw is None or not str(japanese_text_raw).strip():
-                    logging.warning(f"OCR returned no text for box {j+1} in group {i+1}. Skipping.")
+                    # logging.warning(f"OCR returned no text for box {j+1} in group {i+1}. Skipping.")
                     continue
-                    
+
                 japanese_text = str(japanese_text_raw)
                 combined_japanese_text.append(japanese_text)
-                
+                successful_original_boxes.append(box)
+
             except Exception as e:
                 logging.error(f"Pipeline error during OCR for box {j+1} in group {i+1}: {e}. Skipping.")
                 continue
 
         # Join the text from all boxes in the group for a single, context-aware translation
         full_japanese_text = " ".join(combined_japanese_text)
-        
+
         if not full_japanese_text.strip():
             logging.warning(f"No text was extracted for group {i+1}/{len(grouped_boxes)}. Skipping translation.")
             continue
-            
+
         logging.info(f"Group {i+1}/{len(grouped_boxes)}: Extracted Japanese Text: {full_japanese_text[:30]}...")
-        
+
         try:
             # Translate the combined Japanese text to English
             english_text = translate_japanese_to_english(full_japanese_text)
-            
+
             if "[Translation Error" in english_text:
                 logging.error(f"Translation failed for group {i+1}/{len(grouped_boxes)}: {english_text}. Skipping.")
                 continue
-            
+
             logging.info(f"Group {i+1}/{len(grouped_boxes)}: Translated English Text: {english_text[:30]}...")
-            
-            # Store the group box and the translated text. The text renderer will now render
-            # the full translated text into the single, larger group box.
-            translated_texts.append((group_box, english_text))
-            
+
+            # Store the data required for the GUI editor
+            translated_data_list.append({
+                'group_box': group_box,
+                'japanese_text': full_japanese_text,
+                'english_text': english_text,
+                'original_boxes': successful_original_boxes,
+            })
+
         except Exception as e:
             logging.error(f"Pipeline error during Translation for group {i+1}/{len(grouped_boxes)}: {e}. Skipping.")
             continue
 
-    if not translated_texts:
-        logging.warning("No text was successfully extracted and translated. Saving original image.")
-        original_image.save(output_image_path)
-        logging.info(f"Pipeline finished. Saved original image to {output_image_path}")
-        return
+    if not translated_data_list:
+        logging.warning("No text was successfully extracted and translated. Returning original image.")
+        return original_image, []
 
-    # 5. Remove Japanese text (Inpainting)
+    # 4. Remove Japanese text (Inpainting)
     try:
-        # The remove_text function handles mask creation and iopaint CLI execution
+        # Inpainting still needs the original, un-grouped bounding boxes for the mask
         inpainted_image = remove_text(input_image_path, bounding_boxes, padding=INPAINT_PADDING)
         logging.info("Inpainting complete.")
     except Exception as e:
-        logging.error(f"Pipeline aborted: Inpainting failed: {e}")
+        logging.error(f"Inpainting failed: {e}. Returning original image for editing.")
+        return original_image, translated_data_list
+
+    logging.info("--- Core pipeline finished successfully. ---")
+    return inpainted_image, translated_data_list
+
+
+def process_manga_page(input_image_path: str, output_image_path: str):
+    """
+    Legacy main pipeline function for CLI usage (modified to use the new core function).
+    
+    Steps:
+    1. Run core pipeline to get inpainted image and translation data.
+    2. Render English text onto the inpainted image using original bounding boxes.
+    3. Save the final image.
+    """
+    logging.info(f"--- Starting CLI pipeline for {input_image_path} ---")
+
+    inpainted_image, translated_data_list = run_translation_pipeline(input_image_path)
+
+    if inpainted_image is None or not translated_data_list:
+        if inpainted_image is not None:
+            # If we successfully loaded the image but got no translation data, save original/inpainted (depending on run_translation_pipeline)
+            inpainted_image.save(output_image_path)
+            logging.info(f"Pipeline finished. Saved image to {output_image_path}")
+        else:
+            logging.error("CLI Pipeline aborted due to core failure.")
         return
 
     # 6. Render English text
-    # Now we iterate over all translated texts and render them into their respective bounding boxes.
     try:
         current_image = inpainted_image
-        for i, (box, text) in enumerate(translated_texts):
-            logging.info(f"Rendering text for region {i+1}/{len(translated_texts)}.")
-            # render_text takes the image, the text, and the bounding box
+        
+        # Adapt data for render_text signature (box, text)
+        render_data = [(d['group_box'], d['english_text']) for d in translated_data_list]
+        
+        for i, (box, text) in enumerate(render_data):
+            logging.info(f"Rendering text for region {i+1}/{len(render_data)}.")
             current_image = render_text(current_image, text, box)
             
         final_image = current_image
         logging.info("Text rendering complete.")
     except Exception as e:
-        logging.error(f"Pipeline aborted: Text rendering failed: {e}")
+        logging.error(f"CLI Pipeline aborted: Text rendering failed: {e}")
         return
 
     # 7. Save the final image
     try:
         final_image.save(output_image_path)
-        logging.info(f"Pipeline finished successfully. Saved to {output_image_path}")
+        logging.info(f"CLI Pipeline finished successfully. Saved to {output_image_path}")
     except Exception as e:
         logging.error(f"Failed to save final image to {output_image_path}: {e}")
 

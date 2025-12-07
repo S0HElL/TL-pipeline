@@ -142,19 +142,57 @@ Build a pipeline to: Extract Japanese text from manga/comic images → Remove te
 
 ---
 
-## MVP Complete! 🎉
+## Phase 7: Testing & Polish (Cont.)
 
-**Next Steps (Post-MVP):**
-- Batch processing for multiple images
-- Web interface (Gradio/Streamlit)
-- Vertical text handling improvements
-- Custom font selection
-- Quality comparison metrics
+### Task 7.4: Refactor for GUI Integration **[Difficulty: 4/10]** [Depends on: 6.3]
+- [-] 7.4.1: Ensure core pipeline functions are easily callable and return intermediate results (OCR data, inpainting mask, translated text, original bounding boxes).
 
 ---
 
+## Phase 8: Desktop GUI Implementation (PyQt/PySide)
+
+### Task 8.1: GUI Environment Setup **[Difficulty: 3/10]** [Depends on: 7.4]
+- [ ] 8.1.1: Install PyQt6/PySide6: `pip install PySide6` (or PyQt6 if preferred)
+- [ ] 8.1.2: Create `gui/main_window.py` for the primary application structure.
+- [ ] 8.1.3: Create `gui/editor_canvas.py` for the image display and interaction area.
+
+### Task 8.2: Application Architecture and Display **[Difficulty: 6/10]** [Depends on: 8.1]
+- [ ] 8.2.1: Implement core application class (`MangaTranslatorApp`).
+- [ ] 8.2.2: Implement file loading dialog for image upload.
+- [ ] 8.2.3: Display loaded image in `EditorCanvas` using QPixmap.
+
+### Task 8.3: Pipeline Integration and Responsiveness **[Difficulty: 7/10]** [Depends on: 8.2, 7.4]
+- [ ] 8.3.1: Implement a `QThread` or `QRunnable` based worker to execute the full translation pipeline (`main.py` logic) asynchronously when the "TL" button is pressed.
+- [ ] 8.3.2: Connect worker signals to update the GUI upon completion (display the translated image and OCR data).
+
+### Task 8.4: Interactive Bounding Box Management **[Difficulty: 8/10]** [Depends on: 8.3]
+- [ ] 8.4.1: Draw original text bounding boxes (BBoxes) as selectable overlay elements on the canvas.
+- [ ] 8.4.2: Implement click selection of BBoxes, highlighting the selected region.
+- [ ] 8.4.3: Implement resize handles on selected BBoxes (corners and edges) to allow users to visually adjust the text area size/aspect ratio.
+- [ ] 8.4.4: Allow BBox movement (drag and drop) within the canvas.
+
+### Task 8.5: Text Editing and Typesetting Controls **[Difficulty: 7/10]** [Depends on: 8.4]
+- [ ] 8.5.1: Create a side panel/dock widget for typesetting controls (Font Family, Font Size, Text Color, Alignment).
+- [ ] 8.5.2: Populate Font Family dropdown using files from the `fonts/` directory.
+- [ ] 8.5.3: Implement a text input area linked to the selected BBox, allowing users to edit the translated text.
+- [ ] 8.5.4: Ensure changes in typesetting controls instantly update the rendered text preview on the canvas.
+
+### Task 8.6: Final Rendering and Output **[Difficulty: 5/10]** [Depends on: 8.5]
+- [ ] 8.6.1: Write function to compile all edited BBox data (new size, position, translated text, font settings).
+- [ ] 8.6.2: Adapt `text_renderer.py` or create a new module to use the user-defined PyQt/PySide rendering results for final image output.
+- [ ] 8.6.3: Implement "Save Final Image" button, using the modified BBoxes to render the final output image.
+
+---
+
+## Phase 9: Final Review & Release Preparation
+
+### Task 9.1: Testing and Polish **[Difficulty: 5/10]** [Depends on: 8.6]
+- [ ] 9.1.1: Conduct thorough end-to-end testing of all GUI features.
+- [ ] 9.1.2: Optimize GUI responsiveness and performance, especially during image updates and resizing.
+- [ ] 9.1.3: Update README/Documentation with GUI usage instructions.
+
 ## Current Status
-**Last Updated:** Main pipeline (`main.py`) created with integration, file handling, and error handling.
-**Current Phase:** Phase 7 - Testing & Polish
-**Next Task:** Task 7.1.1 - Test complete pipeline with 5+ different manga images
+**Last Updated:** Detailed plan for PyQt/PySide GUI expansion created. Core pipeline functions must now be refactored for non-blocking asynchronous calls.
+**Current Phase:** Phase 7 - Testing & Polish (Preparing for GUI)
+**Next Task:** Task 7.4.1 - Ensure core pipeline functions are easily callable and return intermediate results.
 **Completed:** Phase 1 (all tasks), Phase 2 (all tasks), Phase 3 (all tasks), Phase 4 (all tasks), Phase 5 (all tasks), Phase 6 (all tasks)
