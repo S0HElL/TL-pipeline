@@ -3,6 +3,9 @@ venv/
 env/
 ENV/
 
+#agent markdown files
+manga_translation_tasks.md
+
 # Python
 __pycache__/
 *.py[cod]
